@@ -45,22 +45,59 @@ module "project" {
     "pubsub.googleapis.com",
     "sourcerepo.googleapis.com",
   ]
+
+  # organization policies
+
+  # org_policies = {
+  #   "iam.disableServiceAccountKeyCreation" = {
+  #     rules = [ { enforce = true }]
+  #   }
+  # }
+
+
+
+  # additional IAM grants to service accounts
+  iam_additive = {
+    "roles/editor" = ["serviceAccount:${var.tf_service_account}"]
+  }
+
+  # logging 
+
+  # logging_sinks = {
+  #   warnings = {
+  #     destination = module.bucket.id
+  #     filter = "severity=DEBUG"
+  #     exclusions = {
+  #       no-compute = "logName:compute"
+  #     }
+
+  #     type = "logging"
+  #   }
+  # }
 }
+
+# module "bucket" {
+#   source = "github.com/terraform-google-mocules/cloud-foundation-fabric//modules/net-vpc?ref=v16.0.0"
+#   parent_type = "project"
+#   parent = var.project_id
+#   id    = "logging_bucket"
+# }
 
 module "vpc" {
   source     = "github.com/terraform-google-modules/cloud-foundation-fabric//modules/net-vpc?ref=v16.0.0"
   project_id = module.project.project_id
   name       = var.network
   subnets    = var.subnets
+  vpc_create = var.vpc_create
 }
 
 module "apigee" {
   source     = "github.com/terraform-google-modules/cloud-foundation-fabric//modules/apigee?ref=v19.0.0"
   project_id = module.project.project_id
-  organization = {
+  organization = var.org_create ? {
     runtime_type     = "HYBRID"
     analytics_region = var.ax_region
-  }
+  } : null
   envgroups    = local.envgroups
   environments = var.apigee_environments
 }
@@ -209,7 +246,7 @@ module "apigee-service-account" {
     ]
   }
   iam_project_roles = {
-    "module.project.project_id" = [
+    "${module.project.project_id}" = [
       "roles/logging.logWriter",
       "roles/monitoring.metricWriter",
       "roles/storage.objectAdmin",

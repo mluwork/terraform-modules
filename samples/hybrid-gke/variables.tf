@@ -94,13 +94,13 @@ variable "gke_cluster" {
     secondary_range_services = string
   })
   default = {
-    location = "europe-west1"
+    location = "us-central1"
     master_authorized_ranges = {
       "internet" = "0.0.0.0/0"
     }
     master_ip_cidr           = "192.168.0.0/28"
     name                     = "hybrid-cluster"
-    region                   = "europe-west1"
+    region                   = "us-central1"
     secondary_range_pods     = "pods"
     secondary_range_services = "services"
   }
@@ -134,4 +134,21 @@ variable "deploy_sealed_secrets" {
   description = "Deploy the sealed-secrets operator (see https://github.com/bitnami-labs/sealed-secrets)."
   type        = bool
   default     = true
+}
+
+variable "tf_service_account" {
+  description = "Service account used by Terraform"
+  type = string
+}
+
+variable "org_create" {
+  description = "Create Apigee Organization"
+  type    = bool
+  default = false
+}
+
+variable "vpc_create" {
+  description = "Create VPC network and subnets"
+  type    = bool
+  default = true
 }
