@@ -54,16 +54,16 @@ apigee_envgroups = {
   }
 }
 
-subnets = var.vpc_create ? [{
-  name          = "dev-apigee-gke-nodes"
-  description   = "DEV Subnet for K8s Kubernetes Cluster on us-central1"
-  ip_cidr_range = "172.28.13.0/24"
-  region        = var.ax_region
-  secondary_ip_range = {
-    pods     = "10.100.0.0/20"
-    services = "10.101.0.0/23"
-  }
-}] : []
+# subnets = [{
+#   name          = "dev-apigee-gke-nodes"
+#   description   = "DEV Subnet for K8s Kubernetes Cluster on us-central1"
+#   ip_cidr_range = "172.28.13.0/24"
+#   region        = var.ax_region
+#   secondary_ip_range = {
+#     pods     = "10.100.0.0/20"
+#     services = "10.101.0.0/23"
+#   }
+# }]
 
 # CHANGE ME
 gke_cluster = {
