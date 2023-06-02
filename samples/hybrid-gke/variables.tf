@@ -71,6 +71,12 @@ variable "network" {
   default     = "apigee-network"
 }
 
+variable "network_self_link" {
+  description = "The self_link FQDN for the host VPC. Required if var.vpc_create is false."
+  type        = string
+  default     = null
+}
+
 variable "subnets" {
   description = "Subnets to be greated in the network."
   type = list(object({
@@ -90,19 +96,21 @@ variable "gke_cluster" {
     location                 = string
     master_ip_cidr           = string
     master_authorized_ranges = map(string)
+    subnetwork               = string
     secondary_range_pods     = string
     secondary_range_services = string
   })
   default = {
     location = "us-central1"
     master_authorized_ranges = {
-      "internet" = "0.0.0.0/0"
+      "internet" = "0.0.0.0/8"
     }
     master_ip_cidr           = "192.168.0.0/28"
     name                     = "hybrid-cluster"
     region                   = "us-central1"
     secondary_range_pods     = "pods"
     secondary_range_services = "services"
+    subnetwork               = "CHANGE_ME LINK TO SUBNETWORK"
   }
 }
 
@@ -138,17 +146,46 @@ variable "deploy_sealed_secrets" {
 
 variable "tf_service_account" {
   description = "Service account used by Terraform"
-  type = string
+  type        = string
 }
 
 variable "org_create" {
   description = "Create Apigee Organization"
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 variable "vpc_create" {
   description = "Create VPC network and subnets"
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
+}
+
+variable "env_create" {
+  description = "Create the Apigee Environments and Groups"
+  type        = bool
+  default     = true
+}
+
+variable "vpc_host_project" {
+  description = "The host project which shares SNETs with this project."
+  type        = string
+  default     = null
+}
+
+variable "nodepool_service_account_email" {
+  description = "The Service Account email to use with the Node Pool"
+  type        = string
+  default     = null
+}
+variable "nodepool_service_account_create" {
+  description = "Should create the nodepool_service_account from the provided email"
+  type        = bool
+  default     = false
+}
+
+variable "cert_manager_helm_repo" {
+  description = "The repository to use for cert-manager helm charts."
+  type        = string
+  default     = "https://charts.jetstack.io"
 }

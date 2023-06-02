@@ -1,6 +1,96 @@
 # Apigee hybrid installation
 
-This example shows how to use Terraform to create a GKE cluster to run Apigee hybrid and how to feed the configuration parameters in to the new [installation tooling](https://github.com/apigee/apigee-hybrid-install) that is currently in preview.
+This example shows how to use Terraform to create a private GKE cluster to run Apigee hybrid and how to feed the configuration parameters in to the new [installation tooling](https://github.com/apigee/apigee-hybrid-install) that is currently in preview.
+
+## Configuration
+
+Read through this README file and then search for "CHANGE_ME" and update variables as needed.
+Region is set to `us-central1` by default - search for and update all uses of that string if changing the region.
+
+## Project and VPC
+
+Terraform is capable of creating and managing the Project and Network resource (VPC and SNET). However you may need to use a service project and a host network. In that case you will need to have the Project, VPC, and subnet provisioned in advance by your organization's Administrators. The host VPC subnet(s) will need to be shared with your service project. The host VPC does not need to be peered.
+Set the following:
+
+* var.project_create = false
+* var.vpc_create =  false
+* var.network = "name of the VPC"
+* var.network_self_link = "self link (FQDN) for the VPC"
+* module "gke-cluster".subnetwork = var.gke_cluster.subnetwork
+
+If the cluster nodes need to connect to the internet, then uncomment the "nat" configuration block - this will create a NAT Router for egress to the internet.
+
+## Apigee Hybrid Organization and Environments
+
+Terraform is capable of creating and managing the Apigee Organizations and Environments. However some organizations prohibit this. In that case you will need to have the Apigee Organization, Environments, and Environment Groups provisioned in advance by your organization's Administrators.
+Set the following:
+
+* var.org_create = false
+* var.env_create = false
+
+## Service Account Setup
+
+Terraform is capable of creating and managing IAM policies and roles. However some organizations prohibit this. In that case you will need to have the required Service Accounts provisioned in advance by your organization's IAM Administrators. You will need to use `terraform import` to import Service Accounts that were created outside of terraform.
+
+* var.tf_service_account
+  * Service Account for Terraform to assume to create and manage resources.
+  * Required Roles:
+    1. [DEPRECATED] Apigee API Admin
+    1. Apigee Analytics Agent
+    1. Apigee Connect Agent
+    1. Apigee Runtime Agent
+    1. Apigee Security Admin
+    1. Apigee Synchronizer Manager
+    1. Compute Network Admin
+    1. Editor
+    1. Kubernetes Engine Admin
+    1. Logs Writer
+    1. Monitoring Metric Writer
+    1. Service Usage Admin
+    1. Storage Object Admin
+  * Also requires Compute Network Viewer on the host Project/Network.
+* var.nodepool_service_account_email
+  * Service Account for the GKE cluster nodes to assume. See <https://cloud.google.com/kubernetes-engine/docs/how-to/service-accounts#default-gke-service-agent>.
+  * Required Roles:
+    1. Artifact Registry Reader
+    1. Kubernetes Engine Node Service Account
+* module.apigee-service-account ("apigee-all-sa")
+  * The Service Account for Apigee Non-Prod deployments. See <https://cloud.google.com/apigee/docs/hybrid/v1.9/sa-about#recommended-sas>.
+    * Note that for Production deployments, it is recommened to use separate Service Accounts for each Role.
+  * Configuration `module.apigee-service-account` contains all of the required Roles, though they may be commented out.
+
+## cert-manager Images
+
+If your GKE cluster will lack access to the internet, then you must upload the Cert Manager container images to Artifact Registry as well as a modified helm chart.
+
+1. Create an Artifact Registry Docker registry in your GCP Project. Update `var.cert_manager_helm_repo`, the URL should match this pattern: `https://us-central1-docker.pkg.dev/${PROJECT_ID}/${REGISTRY_NAME}`.
+2. Use docker to pull the cert-manager images (cert-manager-cainjector, cert-manager-controller, cert-manager-ctl, cert-manager-webhook). Available at <https://quay.io/repository/jetstack/>
+    ```sh
+      docker pull quay.io/jetstack/cert-manager-cainjector:v1.10.2
+      docker pull quay.io/jetstack/cert-manager-controllertl:v1.10.2
+      docker pull quay.io/jetstack/cert-manager-ctl:v1.10.2
+      docker pull quay.io/jetstack/cert-manager-webhook:v1.10.2
+    ```
+3. Re-tag and push the images to your Artifact Registry. **Prepend the namespace `images/` in the tags.**
+4. Add the Jetstack helm repo and pull :
+    ```sh
+    helm repo add jetstack https://charts.jetstack.io
+    helm pull jetstack/cert-manager --version 1.7.3
+    ```
+5. Unpack the helm chart.
+    ```sh
+    gzip -dc cert-manager-v1.7.3.tgz | tar -xvf -
+    ```
+6. Modify the `values.yaml` file to use your Artifact Registry and container images. Pay attention to tag versions.
+7. Add the docker registry as a helm registry:
+    ```sh
+    helm repo add $REGISTRY_NAME https://us-central1-docker.pkg.dev/${PROJECT_ID}/${REGISTRY_NAME}
+    ```
+8. Package and upload the new cert-manager chart:
+    ```sh
+    helm package cert-manager
+    helm push cert-manager-v1.7.3.tgz oci://us-central1-docker-pkg.dev/${PROJECT_ID}/${REGISTRY_NAME}/charts/
+    ```
 
 ## Installing the control plane and infrastructure components to run Apigee hybrid
 
@@ -11,6 +101,8 @@ terraform apply --var-file=./hybrid-demo.tfvars -var "project_id=$PROJECT_ID"
 ## Configuring Apigee hybrid
 
 ### Fetch the configuration parameters from the terraform state
+
+If the Environment, VPC, and SNET are not managed by terraform, then you will need to gather these values manually.
 
 ```sh
 CLUSTER_REGION="$(terraform output -raw cluster_region)"
@@ -29,6 +121,8 @@ gcloud container clusters get-credentials "$CLUSTER_NAME" --region "$CLUSTER_REG
 ```
 
 ### Prepare the Workload Configuration
+
+If your apigee-service-account was created or provisioned with roles outside of terraform, then remove `--create-gcp-sa-and-secrets` from this command.
 
 ```sh
 git clone https://github.com/apigee/apigee-hybrid-install.git
@@ -53,6 +147,32 @@ curl -X POST -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type:application/json" \
   "https://apigee.googleapis.com/v1/organizations/${PROJECT_ID}:setSyncAuthorization" \
    -d "{\"identities\":[\"serviceAccount:apigee-all-sa@${PROJECT_ID}.iam.gserviceaccount.com\"]}"
+```
+
+### Upload GCP Service Account Key to GKE
+
+If your apigee-service-account was created or provisioned with roles outside of terraform, run the following commands:
+
+```sh
+INSTALL_DIR=$(pwd)
+kubectl create secret generic apigee-metrics-gcp-sa-key -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/<SERVICE ACCOUNT FILE NAME>.json
+
+kubectl create secret generic  apigee-udca-gcp-sa-key-${PROJECT_ID} -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/
+${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-udca-gcp-sa-key-${PROJECT_ID} -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-watcher-gcp-sa-key-${PROJECT_ID} -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-synchronizer-gcp-sa-key-${PROJECT_ID} -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-synchronizer-gcp-sa-key-${PROJECT_ID}-dev -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-udca-gcp-sa-key-${PROJECT_ID}-dev -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-mart-gcp-sa-key-${PROJECT_ID} -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
+
+kubectl create secret generic  apigee-runtime-gcp-sa-key-${PROJECT_ID}-dev -n apigee --from-file=client_secret.json=${INSTALL_DIR}/service-accounts/${PROJECT_ID}-apigee-all-sa.json
 ```
 
 ### Seal the secrets (Optional but recommended for GitOps)
@@ -235,6 +355,6 @@ No requirements.
 | <a name="output_cluster_region"></a> [cluster\_region](#output\_cluster\_region) | Cluster location. |
 <!-- END_TF_DOCS -->
 
-## Copyright
+## Credits and Acknowledgements
 
-Copyright 2023 Google LLC. This software is provided as-is, without warranty or representation for any use or purpose. Your use of it is subject to your agreement with Google.
+Based on [Ming Lu](https://github.com/mluwork)'s fork of [Google's Apigee Terraform Modules](https://github.com/apigee/terraform-modules/tree/main/samples/hybrid-gke) (<https://github.com/mluwork/terraform-modules>) which itself implements the [Cloud Foundation Fabric](https://github.com/GoogleCloudPlatform/cloud-foundation-fabric).

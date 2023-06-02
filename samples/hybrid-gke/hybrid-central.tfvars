@@ -16,6 +16,17 @@
 
 ax_region = "us-central1"
 
+# CHANGE ME
+tf_service_account     = "apigee-cicd-sa@apigee-hybrid-proj.iam.gserviceaccount.com"
+project_create         = false
+vpc_create             = false
+org_create             = false
+env_create             = false
+vpc_host_project       = "CHANGE ME"
+network                = "CHANGE ME"
+network_self_link      = "CHANGE ME"
+cert_manager_helm_repo = "oci://us-central1-docker.pkg.dev/<CHANGE ME to PROJECT_ID>/<ARTIFACT REGISTRY ID>/charts"
+
 apigee_environments = {
   dev = {
     display_name = "dev"
@@ -43,33 +54,30 @@ apigee_envgroups = {
   }
 }
 
-subnets = [{
-  name          = "hybrid-us-central1"
-  ip_cidr_range = "172.28.0.0/16"
-  region        = "us-central1"
-  secondary_ip_range = {
-    pods     = "10.100.0.0/20"
-    services = "10.101.0.0/23"
-  }
-}]
-
-gke_cluster = {
-
-  location = "us-central1"
-  master_authorized_ranges = {
-    "internet" = "0.0.0.0/0"
-  }
-  master_ip_cidr           = "192.168.0.0/28"
-  name                     = "hybrid-cluster"
-  region                   = "us-central1"
-  secondary_range_pods     = "pods"
-  secondary_range_services = "services"
-}
-
-# POC settings to reduce infrastructure cost
-# reconsider using these for production!
-node_preemptible_runtime = true
-node_locations_data      = ["us-central1-b"]
+# subnets = [{
+#   name          = "dev-apigee-gke-nodes"
+#   description   = "DEV Subnet for K8s Kubernetes Cluster on us-central1"
+#   ip_cidr_range = "172.28.13.0/24"
+#   region        = var.ax_region
+#   secondary_ip_range = {
+#     pods     = "10.100.0.0/20"
+#     services = "10.101.0.0/23"
+#   }
+# }]
 
 # CHANGE ME
-tf_service_account = "apigee-cicd-sa@apigee-hybrid-proj.iam.gserviceaccount.com"
+gke_cluster = {
+  location = var.ax_region
+  master_authorized_ranges = {
+    "workstation" = "34.139.202.148/32" # This will need to be updated to your IP address or network range.
+  }
+  subnetwork               = "CHANGE ME - self_link (FQDN) for the subnet"
+  master_ip_cidr           = "172.28.12.16/28"
+  name                     = "hybrid-cluster"
+  region                   = var.ax_region
+  secondary_range_pods     = "CHANGE ME"
+  secondary_range_services = "CHANGE ME"
+}
+
+node_preemptible_runtime = false
+node_locations_data      = ["us-central1-a", "us-central1-b", "us-central1-c"]
