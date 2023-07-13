@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-ax_region = "europe-west1"
+ax_region = "us-central1"
 
 apigee_environments = {
-  test1 = {
-    display_name = "Test 1"
+  dev = {
+    display_name = "dev"
     description  = "Environment created by apigee/terraform-modules"
     node_config  = null
     iam          = null
-    envgroups    = ["test"]
+    envgroups    = ["dev"]
   }
-  test2 = {
-    display_name = "Test 2"
+  test = {
+    display_name = "test"
     description  = "Environment created by apigee/terraform-modules"
     node_config  = null
     iam          = null
@@ -34,15 +34,18 @@ apigee_environments = {
 }
 
 apigee_envgroups = {
+  dev = {
+    hostnames = ["dev.mlugpspso.joonix.net"]
+  }
   test = {
-    hostnames = ["test.api.example.com"]
+    hostnames = ["test.mlugpspso.joonix.net"]
   }
 }
 
 subnets = [{
-  name          = "hybrid-europe-west1"
-  ip_cidr_range = "10.0.0.0/24"
-  region        = "europe-west1"
+  name          = "hybrid-us-central1"
+  ip_cidr_range = "172.28.0.0/16"
+  region        = "us-central1"
   secondary_ip_range = {
     pods     = "10.100.0.0/20"
     services = "10.101.0.0/23"
@@ -52,4 +55,6 @@ subnets = [{
 # POC settings to reduce infrastructure cost
 # reconsider using these for production!
 node_preemptible_runtime = true
-node_locations_data      = ["europe-west1-b"]
+node_locations_data      = ["us-central1-b"]
+
+tf_service_account = "apigee-cicd-sa@apigee-hybrid-proj.iam.gserviceaccount.com"

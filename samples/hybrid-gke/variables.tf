@@ -138,17 +138,101 @@ variable "deploy_sealed_secrets" {
 
 variable "tf_service_account" {
   description = "Service account used by Terraform"
-  type = string
+  type        = string
 }
 
 variable "org_create" {
   description = "Create Apigee Organization"
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 variable "vpc_create" {
   description = "Create VPC network and subnets"
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
+}
+
+variable "developer_group_email_address" {
+  description = "Developer group email address"
+  type        = string
+  default     = "gcp-developers@mlugpspso.joonix.net"
+}
+
+# TF Backend State Storage
+
+variable "gcs_location" {
+  description = "Location of GCS bucket"
+  type        = string
+  default     = "US"
+}
+
+# Service Accounts
+variable "profiles" {
+  description = "supported profiles"
+  type        = set(string)
+  default = [
+    "apigee-logger",
+    "apigee-metrics",
+    "apigee-cassandra",
+    "apigee-udca",
+    "apigee-synchronizer",
+    "apigee-mart",
+    "apigee-watcher",
+    "apigee-runtime",
+  ]
+}
+
+variable "profile_roles" {
+  description = "Roles to be assigned to the service accounts"
+  type        = map(list(string))
+  default = {
+    "apigee-logger" = [
+      "roles/logging.logWriter",
+    ],
+    "apigee-metrics" = [
+      "roles/monitoring.metricWriter",
+    ],
+    "apigee-cassandra" = [
+      "roles/storage.objectAdmin",
+    ],
+    "apigee-udca" = [
+      "roles/apigee.analyticsAgent",
+    ],
+    "apigee-synchronizer" = [
+      "roles/apigee.synchronizerManager",
+    ]
+    "apigee-mart" = [
+      "roles/apigeeconnect.Agent",
+    ]
+    "apigee-watcher" = [
+      "roles/apigee.runtimeAgent"
+    ],
+    "apigee-runtime" = [
+    ]
+  }
+}
+
+variable "supported_env" {
+  description = "Supported environments"
+  type        = list(string)
+  default = [
+    "prod",
+    "staging",
+  ]
+}
+
+variable "gsa-ksa-mapping" {
+  description = "GCP SA to K8S SA Mapping"
+  type        = map(string)
+  default = {
+    "apigee-logger"        = "apigee-logger"
+    "apigee-metrics"       = "apigee-metrics"
+    "apigee-cassandra"     = "apigee-cassandra"
+    "apigee-udca"          = "apigee-udca"
+    "apigee-synchronizer"  = "apigee-synchronizer"
+    "apigee-mart"          = "apigee-mart"
+    "apigee-watcher"       = "apigee-watcher"
+    "apigee-connect-agent" = "apigee-mart"
+  }
 }

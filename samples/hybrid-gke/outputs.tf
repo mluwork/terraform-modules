@@ -33,3 +33,8 @@ output "apigee_environments" {
   description = "Apigee Environments"
   value       = module.apigee.environments
 }
+
+output "apigee_sas" {
+  description = "Apigee Service Accounts"
+  value       = [for sa in google_service_account.apigee_sa : sa.email]
+}

@@ -15,7 +15,8 @@
  */
 
 locals {
-  envgroups = { for key, value in var.apigee_envgroups : key => value.hostnames }
+  envgroups   = { for key, value in var.apigee_envgroups : key => value.hostnames }
+  vpc_project = "apigee-hybrid-proj"
 }
 
 data "google_client_config" "provider" {}
@@ -30,6 +31,25 @@ provider "helm" {
   }
 }
 
+
+
+
+module "tf-bucket" {
+  source     = "github.com/terraform-google-modules/cloud-foundation-fabric//modules/gcs?ref=v16.0.0"
+  project_id = var.project_id
+  name       = "apigee"
+  prefix     = "${var.ax_region}-tf"
+  location   = var.gcs_location
+  labels     = {}
+  iam = {
+    "roles/storage.objectAdmin" = [
+      "serviceAccount:${var.tf_service_account}",
+      "serviceAccount:${module.project.number}@cloudbuild.gserviceaccount.com",
+      "group:${var.developer_group_email_address}"
+    ]
+  }
+}
+
 module "project" {
   source          = "github.com/terraform-google-modules/cloud-foundation-fabric//modules/project?ref=v16.0.0"
   name            = var.project_id
@@ -39,6 +59,11 @@ module "project" {
   services = [
     "apigee.googleapis.com",
     "apigeeconnect.googleapis.com",
+    "artifactregistry.googleapis.com", # for registry
+    "cloudbuild.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "cloudscheduler.googleapis.com",
+    "cloudtrace.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "container.googleapis.com",
@@ -56,7 +81,7 @@ module "project" {
 
 
 
-  # additional IAM grants to service accounts
+  # additional IAM grants to service accounts or groups
   iam_additive = {
     "roles/editor" = ["serviceAccount:${var.tf_service_account}"]
   }
@@ -66,26 +91,28 @@ module "project" {
   # logging_sinks = {
   #   warnings = {
   #     destination = module.bucket.id
-  #     filter = "severity=DEBUG"
+  #     filter      = "severity=DEBUG"
   #     exclusions = {
   #       no-compute = "logName:compute"
   #     }
-
-  #     type = "logging"
+  #     type          = "logging"
+  #     iam           = true
+  #     unique_writer = true
   #   }
   # }
 }
 
-# module "bucket" {
-#   source = "github.com/terraform-google-mocules/cloud-foundation-fabric//modules/net-vpc?ref=v16.0.0"
-#   parent_type = "project"
-#   parent = var.project_id
-#   id    = "logging_bucket"
-# }
+module "bucket" {
+  source      = "github.com/terraform-google-modules/cloud-foundation-fabric//modules/logging-bucket?ref=v16.0.0"
+  parent_type = "project"
+  parent      = var.project_id
+  location    = "us-central1"
+  id          = "apigee_logging_bucket"
+}
 
 module "vpc" {
   source     = "github.com/terraform-google-modules/cloud-foundation-fabric//modules/net-vpc?ref=v16.0.0"
-  project_id = module.project.project_id
+  project_id = local.vpc_project
   name       = var.network
   subnets    = var.subnets
   vpc_create = var.vpc_create
@@ -118,6 +145,23 @@ module "gke-cluster" {
     master_ipv4_cidr_block  = var.gke_cluster.master_ip_cidr
     master_global_access    = true
   }
+
+  addons = {
+    cloudrun_config            = false
+    dns_cache_config           = false
+    horizontal_pod_autoscaling = true
+    http_load_balancing        = true
+    istio_config = {
+      enabled = false
+      tls     = false
+    }
+    network_policy_config                 = false
+    gce_persistent_disk_csi_driver_config = true
+    gcp_filestore_csi_driver_config       = false
+    config_connector_config               = false
+    kalm_config                           = false
+    gke_backup_agent_config               = false
+  }
 }
 
 module "gke-nodepool-runtime" {
@@ -130,6 +174,12 @@ module "gke-nodepool-runtime" {
   node_preemptible   = var.node_preemptible_runtime
   initial_node_count = 1
   node_tags          = ["apigee-hybrid", "apigee-runtime"]
+
+  autoscaling_config = {
+    location_policy = "BALANCED"
+    max_node_count  = 2
+    min_node_count  = 1
+  }
 }
 
 module "gke-nodepool-data" {
@@ -142,6 +192,12 @@ module "gke-nodepool-data" {
   initial_node_count = 1
   node_tags          = ["apigee-hybrid", "apigee-data"]
   node_locations     = var.node_locations_data
+
+  autoscaling_config = {
+    location_policy = "BALANCED"
+    max_node_count  = 2
+    min_node_count  = 1
+  }
 }
 
 resource "google_sourcerepo_repository" "apigee-k8s" {
@@ -182,36 +238,6 @@ resource "helm_release" "cert-manager" {
     module.gke-cluster
   ]
 
-}
-
-resource "helm_release" "sealed-secrets" {
-  count      = var.deploy_sealed_secrets ? 1 : 0
-  name       = "sealed-secrets-controller"
-  repository = "https://bitnami-labs.github.io/sealed-secrets"
-  chart      = "sealed-secrets"
-  version    = "2.7.0"
-  namespace  = "kube-system"
-
-  depends_on = [
-    module.gke-cluster
-  ]
-
-}
-
-resource "google_compute_firewall" "allow-master-kubeseal" {
-  count     = var.deploy_sealed_secrets ? 1 : 0
-  project   = module.project.project_id
-  name      = "gke-master-kubeseal"
-  network   = module.vpc.self_link
-  direction = "INGRESS"
-  allow {
-    protocol = "tcp"
-    ports    = ["8080"]
-  }
-  target_tags = ["apigee-hybrid"]
-  source_ranges = [
-    var.gke_cluster.master_ip_cidr,
-  ]
 }
 
 module "nat" {
